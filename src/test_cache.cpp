@@ -3,6 +3,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <iomanip>
 #include <string>
 #include <utility>
@@ -67,6 +68,9 @@ struct LFRUTest : ::testing::Test
 
     using String = StringT<S::value>;
 
+    static constexpr std::size_t biggest_element = std::max(sizeof(Point), sizeof(String));
+    static constexpr std::size_t slab_size = 2 * (cache_size + 1) * biggest_element;
+
     String & get_string(const int n)
     { return cache.get<String>(n); }
 
@@ -74,7 +78,7 @@ struct LFRUTest : ::testing::Test
     { return cache.get<Point>(n); }
 
     LFRUTest()
-        : cache(cache_size, 2 * (cache_size + 1), std::initializer_list<std::size_t>{sizeof(Point), sizeof(String)})
+        : cache(cache_size, slab_size, std::initializer_list<std::size_t>{sizeof(Point), sizeof(String)})
     {}
 };
 
