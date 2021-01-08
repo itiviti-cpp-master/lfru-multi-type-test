@@ -2,16 +2,22 @@
 
 #include <gtest/gtest.h>
 
+#ifndef SANITIZE
+#include <jemalloc/jemalloc.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <iomanip>
 #include <memory>
 #include <new>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 namespace {
 
@@ -509,3 +515,70 @@ TYPED_TEST(DifferentSizesTest, mixed_usage)
     }
     EXPECT_TRUE(this->balanced()) << this->print_balance();
 }
+
+#ifndef SANITIZE
+namespace {
+
+std::size_t get_current_size()
+{
+    std::size_t sz = 0;
+    EXPECT_EQ(0, mallctl("thread.tcache.flush", nullptr, nullptr, nullptr, 0));
+    std::uint64_t epoch = 1;
+    sz = sizeof(epoch);
+    EXPECT_EQ(0, mallctl("epoch", &epoch, &sz, &epoch, sz));
+    std::size_t allocated = 0;
+    sz = sizeof(allocated);
+    EXPECT_EQ(0, mallctl("stats.allocated", &allocated, &sz, nullptr, 0));
+    return allocated;
+}
+
+template <class C>
+auto make_counts(const std::size_t block_size, const C & sizes)
+{
+    std::vector<std::size_t> counts;
+    counts.reserve(sizes.size());
+    for (const auto s : sizes) {
+        counts.push_back(block_size / s);
+    }
+    return counts;
+}
+
+} // anonymous namespace
+
+TEST(MemoryRequirements, single_type)
+{
+    const std::size_t BlockSize = 4096;
+    const std::size_t S = 10;
+    const std::size_t Count = BlockSize / S;
+    std::size_t before = get_current_size(), created = 0, after = 0;
+    PoolAllocator pool(BlockSize, {S});
+    created = get_current_size();
+    for (std::size_t i = 0; i < Count; ++i) {
+        pool.allocate(S);
+    }
+    after = get_current_size();
+    EXPECT_GE(created, after);
+    EXPECT_GE(10 * sizeof(void *), (created - before - BlockSize) / Count);
+}
+
+TEST(MemoryRequirements, multi_type)
+{
+    const std::size_t BlockSize = 4096;
+    const std::initializer_list<std::size_t> Sizes = { 3, 10, 40, 256 };
+    const std::vector<std::size_t> Counts = make_counts(BlockSize, Sizes);
+    const std::size_t TotalCount = std::accumulate(Counts.begin(), Counts.end(), 0);
+    std::size_t before = get_current_size(), created = 0, after = 0;
+    PoolAllocator pool(BlockSize, Sizes);
+    created = get_current_size();
+    std::size_t j = 0;
+    for (const auto size : Sizes) {
+        for (std::size_t i = 0; i < Counts[j]; ++i) {
+            pool.allocate(size);
+        }
+        ++j;
+    }
+    after = get_current_size();
+    EXPECT_GE(created, after);
+    EXPECT_GE(10 * sizeof(void *), (created - before - BlockSize) / TotalCount);
+}
+#endif
