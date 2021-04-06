@@ -7,11 +7,11 @@ set(PROJECT_NAME lfru-multi-type-test)
 project(${PROJECT_NAME})
 
 if (NOT SANITIZE)
-# Jemalloc
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(JEMALLOC REQUIRED IMPORTED_TARGET jemalloc)
-
-include_directories(${JEMALLOC_INCLUDE_DIRS})
+    # Jemalloc
+    find_package(PkgConfig)
+    if (PKG_CONFIG_FOUND)
+        pkg_check_modules(JEMALLOC IMPORTED_TARGET jemalloc)
+    endif()
 endif()
 
 # Inlcude directories
@@ -30,6 +30,10 @@ target_link_libraries(runUnitTests gtest gtest_main)
 
 # Extra linking for the project
 target_link_libraries(runUnitTests lfru_multi_type_lib)
-if (NOT SANITIZE)
-target_link_libraries(runUnitTests PkgConfig::JEMALLOC)
+
+# Jemalloc
+if (JEMALLOC_FOUND)
+    target_compile_definitions(runUnitTests PRIVATE JEMALLOC)
+    target_include_directories(runUnitTests PRIVATE ${JEMALLOC_INCLUDE_DIRS})
+    target_link_libraries(runUnitTests PkgConfig::JEMALLOC)
 endif()
